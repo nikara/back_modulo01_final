@@ -2,7 +2,6 @@ const { Op } = require('sequelize');
 
 async function obtenerTodosLosAutores(postgres, mongo) {
     try {
-
         //Sacamos autores y libros de PostgreSQL
         const autores = await postgres.autores.findAll({
             include: [
@@ -28,27 +27,16 @@ async function obtenerTodosLosAutores(postgres, mongo) {
         }).toArray();
 
         //Sacamos los IDS de usuario para poder obtener los nombres de los usuarios que hacen la reseña.
-        const idsUsuarios = [...new Set(
-            resenas.map(resena => resena.usuario_id)
-        )];
+        const idsUsuarios = resenas.map(resena => resena.usuario_id);
 
         const usuarios = await postgres.usuarios.findAll({
+            attributes: ['id_usuario', 'nombre', 'apellidos'],
             where: {
                 id_usuario: {
                     [Op.in]: idsUsuarios
                 }
             }
         });
-
-        //MAPA: ID usuario + nombre y apellido
-        const usuariosPorId = new Map();
-
-        for (const usuario of usuarios) {
-            usuariosPorId.set(
-                usuario.id_usuario,
-                `${usuario.nombre} ${usuario.apellidos}`
-            );
-        }
 
         //Agrupamos las reseñas de cada libro 
         const resenasPorLibro = new Map();
@@ -61,13 +49,15 @@ async function obtenerTodosLosAutores(postgres, mongo) {
             }
 
             // Añadir el nombre del usuario a la reseña
-            const nombreUsuario = usuariosPorId.get(resena.usuario_id);
+            const usuario = usuarios.find(u => u.id_usuario === resena.usuario_id);
 
             resenasPorLibro.get(resena.libro_id).push({
                 calificacion: resena.calificacion,
                 comentario: resena.comentario,
                 fecha_resena: resena.fecha_resena,
-                usuario: nombreUsuario || 'Usuario no encontrado'
+                usuario: usuario
+                    ? `${usuario.nombre} ${usuario.apellidos}`
+                    : 'Usuario no encontrado'
             });
         }
 
@@ -96,17 +86,18 @@ async function obtenerTodosLosAutores(postgres, mongo) {
         for (const autor of autoresCompletos) {
             console.log("********************************")
             console.log(`Autor:  ${autor.nombre} ${autor.apellidos}`);
+            console.log(`\tLibros:\n`);
 
             if (autor.libros.length === 0) console.log("Este autor todavía no ha publicado ningún libro");
             else {
                 for (const libro of autor.libros) {
-                    console.log(`Titulo:  ${libro.titulo}`);
-
+                    console.log(`\t\tTitulo:  ${libro.titulo}`);
+                    console.log(`\t\tReseñas:\n`);
                     if (libro.resenas.length === 0) console.log("Este libro no tiene reseñas todavía. ");
 
                     for (const resena of libro.resenas) {
-                        console.log(`${resena.usuario} lo calificó como ${resena.calificacion}/5:`);
-                        console.log(`\"${resena.comentario}\"`);
+                        console.log(`\t\t${resena.usuario} lo calificó como ${resena.calificacion}/5:`);
+                        console.log(`\t\t\"${resena.comentario}\"`);
                         console.log("-------------------------------------------------------------------")
 
                     }
@@ -118,7 +109,7 @@ async function obtenerTodosLosAutores(postgres, mongo) {
         return autoresCompletos;
 
     } catch (error) {
-        console.error('Error al obtener los libros:', error);
+        console.error('Error al obtener los autores:', error);
         throw error;
     }
 }
@@ -205,8 +196,8 @@ async function obtenerAutoresMasValorados(postgres, mongo) {
             for (const autor of autoresValorados) {
                 console.log("********************************")
                 console.log(`Autor: ${autor.nombre} ${autor.apellidos}`);
-                console.log(`Valoración: (${autor.media.toFixed(2)}/5)`);
-                console.log(`Número de reseñas: ${autor.numResenas}`);
+                console.log(`\tValoración: (${autor.media.toFixed(2)}/5)`);
+                console.log(`\tNúmero de reseñas: ${autor.numResenas}`);
                 console.log("-------------------------------------------------------------------")
 
             }
@@ -293,7 +284,7 @@ async function obtenerAutoresMasPopulares(postgres, mongo) {
             for (const autor of autoresMasPopulares) {
                 console.log("********************************")
                 console.log(`Autor: ${autor.nombre} ${autor.apellidos}`);
-                console.log(`Número de reseñas: ${autor.numResenas}`);
+                console.log(`\tNúmero de reseñas: ${autor.numResenas}`);
                 console.log("-------------------------------------------------------------------")
 
             }
@@ -302,7 +293,7 @@ async function obtenerAutoresMasPopulares(postgres, mongo) {
         return autoresValorados;
 
     } catch (error) {
-        console.error('Error al obtener los autores mejor valorados:', error);
+        console.error('Error al obtener los autores mas populares:', error);
         throw error;
     }
 

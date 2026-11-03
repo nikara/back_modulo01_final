@@ -1,8 +1,8 @@
 const { Op } = require('sequelize');
 
 async function obtenerTodosLosLibros(postgres, mongo) {
-    try {
 
+    try {
         //Sacamos libros, autores y categorias de PostgreSQL
         const libros = await postgres.libros.findAll({
             include: [
@@ -25,33 +25,23 @@ async function obtenerTodosLosLibros(postgres, mongo) {
         //Array de iDS de Libros para localizar los que tengan reseñas en mongo
         const idsLibros = libros.map(libro => libro.id_libro);
 
-        //Obtenemos las reseñas
+        //Obtenemos las reseñas de mongo
         const resenas = await mongo.resenas.find({
             libro_id: { $in: idsLibros }
         }).toArray();
 
         //Sacamos los IDS de usuario para poder obtener los nombres de los usuarios que hacen la reseña.
-        const idsUsuarios = [...new Set(
-            resenas.map(resena => resena.usuario_id)
-        )];
+        const idsUsuarios = resenas.map(resena => resena.usuario_id);
 
+        //Sacamos de postgress los usuarios de postgress pero solo los datos que nos interesan para despues
         const usuarios = await postgres.usuarios.findAll({
+            attributes: ['id_usuario', 'nombre', 'apellidos'],
             where: {
                 id_usuario: {
                     [Op.in]: idsUsuarios
                 }
             }
         });
-
-        //MAPA: ID usuario + nombre y apellido
-        const usuariosPorId = new Map();
-
-        for (const usuario of usuarios) {
-            usuariosPorId.set(
-                usuario.id_usuario,
-                `${usuario.nombre} ${usuario.apellidos}`
-            );
-        }
 
         //Agrupamos las reseñas de cada libro 
         const resenasPorLibro = new Map();
@@ -64,13 +54,15 @@ async function obtenerTodosLosLibros(postgres, mongo) {
             }
 
             // Añadir el nombre del usuario a la reseña
-            const nombreUsuario = usuariosPorId.get(resena.usuario_id);
+            const usuario = usuarios.find(u => u.id_usuario === resena.usuario_id);
 
             resenasPorLibro.get(resena.libro_id).push({
                 calificacion: resena.calificacion,
                 comentario: resena.comentario,
                 fecha_resena: resena.fecha_resena,
-                usuario: nombreUsuario || 'Usuario no encontrado'
+                usuario: usuario
+                    ? `${usuario.nombre} ${usuario.apellidos}`
+                    : 'Usuario no encontrado'
             });
         }
 
@@ -99,15 +91,16 @@ async function obtenerTodosLosLibros(postgres, mongo) {
         for (const libro of librosCompletos) {
             console.log("********************************")
 
-            console.log(`Título:  ${libro.titulo}`);
-            console.log(`Autor/es: ${libro.autores.map(autor => `${autor.nombre} ${autor.apellidos}`).join(', ')}`);
-            console.log(`Categorías: ${libro.categorias.map(categoria => `${categoria.nombre}`).join(', ')}`);
+            console.log(`Título: ${libro.titulo}`);
+            console.log(`\tAutor/es: ${libro.autores.map(autor => `${autor.nombre} ${autor.apellidos}`).join(', ')}`);
+            console.log(`\tCategorías: ${libro.categorias.map(categoria => `${categoria.nombre}`).join(', ')}`);
+            console.log(`\tReseñas\n`);
 
             if (libro.resenas.length === 0) console.log("Este libro todavia no tiene reseñas.");
             else {
                 for (const resena of libro.resenas) {
-                    console.log(`${resena.usuario} lo calificó como ${resena.calificacion}/5:`);
-                    console.log(`\"${resena.comentario}\"`);
+                    console.log(`\t${resena.usuario} lo calificó como ${resena.calificacion}/5:`);
+                    console.log(`\t\"${resena.comentario}\"`);
                     console.log("-------------------------------------------------------------------")
 
                 }
@@ -124,6 +117,7 @@ async function obtenerTodosLosLibros(postgres, mongo) {
 }
 
 async function obtenerMasPopulares(postgres, mongo) {
+
     try {
 
         //Sacamos todas las reseñas de mongo
@@ -141,7 +135,7 @@ async function obtenerMasPopulares(postgres, mongo) {
             resenasPorLibro.get(resena.libro_id).push(resena);
         }
 
-        //Calculamos la media: Si tiene 4 o más, lo queremos enseñar si no no.
+        //Calculamos la media: Si tiene 4 o más, lo queremos enseñar si no, no.
         const librosPopulares = [];
 
         for (const [idLibro, resenasLibro] of resenasPorLibro) {
@@ -202,11 +196,11 @@ async function obtenerMasPopulares(postgres, mongo) {
             //Necesitamos comprobar que por mucho que haya una reseña en mongo, postgres tenga ese id_libro
             if (libro) {
                 console.log("********************************")
-                console.log(`Título:  ${libro.titulo}`);
-                console.log(`Autor/es: ${libro.autores.map(autor => `${autor.nombre} ${autor.apellidos}`).join(', ')}`);
-                console.log(`Categorías: ${libro.categorias.map(categoria => `${categoria.nombre}`).join(', ')}`);
-                console.log(`Media: ${popular.media.toFixed(2)}/5`);
-                console.log(`Número de reseñas: ${popular.numResenas}`);
+                console.log(`Título: ${libro.titulo}`);
+                console.log(`\tAutor/es: ${libro.autores.map(autor => `${autor.nombre} ${autor.apellidos}`).join(', ')}`);
+                console.log(`\tCategorías: ${libro.categorias.map(categoria => `${categoria.nombre}`).join(', ')}`);
+                console.log(`\tMedia: ${popular.media.toFixed(2)}/5`);
+                console.log(`\tNúmero de reseñas: ${popular.numResenas}`);
                 console.log("-------------------------------------------------------------------")
             }
 
@@ -237,7 +231,7 @@ async function obtenerMenosPopulares(postgres, mongo) {
             resenasPorLibro.get(resena.libro_id).push(resena);
         }
 
-        //Calculamos la media: Si tiene 3 o menos, lo queremos enseñar si no no.
+        //Calculamos la media: Si tiene 3 o menos, lo queremos enseñar si no,a no.
         const librosPopulares = [];
 
         for (const [idLibro, resenasLibro] of resenasPorLibro) {
@@ -257,7 +251,7 @@ async function obtenerMenosPopulares(postgres, mongo) {
             }
         }
 
-        librosPopulares.sort((a, b) => b.media - a.media);
+        librosPopulares.sort((a, b) => b.media + a.media);
 
         //Sacamos los datos de los libros y autores y categorias desde postgress
         const idsLibros = librosPopulares.map(libro => libro.id_libro);
@@ -285,7 +279,7 @@ async function obtenerMenosPopulares(postgres, mongo) {
         });
 
 
-        console.log("Libros más populares")
+        console.log("Libros menos populares")
         console.log("================================")
 
         for (const popular of librosPopulares) {
@@ -298,11 +292,11 @@ async function obtenerMenosPopulares(postgres, mongo) {
             //Necesitamos comprobar que por mucho que haya una reseña en mongo, postgres tenga ese id_libro
             if (libro) {
                 console.log("********************************")
-                console.log(`Título:  ${libro.titulo}`);
-                console.log(`Autor/es: ${libro.autores.map(autor => `${autor.nombre} ${autor.apellidos}`).join(', ')}`);
-                console.log(`Categorías: ${libro.categorias.map(categoria => `${categoria.nombre}`).join(', ')}`);
-                console.log(`Media: ${popular.media.toFixed(2)}/5`);
-                console.log(`Número de reseñas: ${popular.numResenas}`);
+                console.log(`Título: ${libro.titulo}`);
+                console.log(`\tAutor/es: ${libro.autores.map(autor => `${autor.nombre} ${autor.apellidos}`).join(', ')}`);
+                console.log(`\tCategorías: ${libro.categorias.map(categoria => `${categoria.nombre}`).join(', ')}`);
+                console.log(`\tMedia: ${popular.media.toFixed(2)}/5`);
+                console.log(`\tNúmero de reseñas: ${popular.numResenas}`);
                 console.log("-------------------------------------------------------------------")
             }
 
@@ -318,24 +312,20 @@ async function obtenerMenosPopulares(postgres, mongo) {
 async function obtenerLibrosSinResenas(postgres, mongo) {
     try {
 
-
-
-        //Obtenemos solos los id de los libros con reseñas
+        //Sacamos solos los id de los libros con reseñas
         const resenas = await mongo.resenas.find(
             {},
             { projection: { libro_id: 1 } }
         ).toArray();
 
         //Y lo pasamos a un array para poder operar con ellos
-        const idsConResenas = new Set(
-            resenas.map(resena => resena.libro_id)
-        );
-
-
+        const idsConResenas = [
+    ...new Set(resenas.map(resena => resena.libro_id))
+];
         //Sacamos libros, autores y categorias de PostgreSQL
         //pero filtramos: queremos los libros que no aparezca en el array de
         //los ids de mongo. Si no estaba en mongo, lo mostramos por pantalla.
-        
+
         const librosSinResenas = await postgres.libros.findAll({
             include: [
                 {
@@ -364,9 +354,9 @@ async function obtenerLibrosSinResenas(postgres, mongo) {
         for (const libro of librosSinResenas) {
             console.log("********************************")
 
-            console.log(`Título:  ${libro.titulo}`);
-            console.log(`Autor/es: ${libro.autores.map(autor => `${autor.nombre} ${autor.apellidos}`).join(', ')}`);
-            console.log(`Categorías: ${libro.categorias.map(categoria => `${categoria.nombre}`).join(', ')}`);
+            console.log(`Título: ${libro.titulo}`);
+            console.log(`\tAutor/es: ${libro.autores.map(autor => `${autor.nombre} ${autor.apellidos}`).join(', ')}`);
+            console.log(`\tCategorías: ${libro.categorias.map(categoria => `${categoria.nombre}`).join(', ')}`);
             console.log("-------------------------------------------------------------------")
 
         }

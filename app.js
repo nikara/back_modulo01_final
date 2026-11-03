@@ -208,7 +208,7 @@ async function menuEventos(postgres, mongo) {
                 break;
 
             case '3':
-                console.log('Mostrando usuarios que más se apuntan a eventos.');
+                console.log('Mostrando usuarios que más se apuntan a eventos. Mínimo 5');
                 await obtenerUsuariosEnMasEventos(postgres, mongo);
                 await preguntar('\nPulse cualquier tecla para continuar... ');
                 break;
